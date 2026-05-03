@@ -280,6 +280,22 @@ This command is like @code{with-editor-export-editor} but exports
 @code{$HG_EDITOR}.
 @end deffn
 
+@defun with-editor-setup-environment &optional envvar
+Mutate @code{process-environment} so ENVVAR (default @code{$EDITOR}) points at
+the running Emacs.  Unlike @code{with-editor-export-editor}, this writes
+nothing to a buffer and is intended for pre-spawn hooks that
+dynamically bind @code{process-environment} before spawning a subprocess,
+e.g. @code{ghostel-pre-spawn-hook}.
+
+When @code{with-editor-emacsclient-executable} is nil or @code{default-directory}
+is remote, the sleeping editor is exported instead, and the next
+@code{make-process} call from the current buffer is additionally given a
+process filter that handles the sleeping editor's edit requests.
+When the caller spawns the process by other means than
+@code{make-process}, nothing handles these requests and invoking the
+editor hangs until interrupted.
+@end defun
+
 @node Using With-Editor as a library
 @chapter Using With-Editor as a library
 

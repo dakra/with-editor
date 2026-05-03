@@ -74,6 +74,13 @@
 ;;             (apply-partially #'with-editor-export-editor "GIT_EDITOR"))
 ;;   (add-hook 'shell-mode-hook #'with-editor-export-git-editor)
 
+;; For terminal modes that offer a pre-spawn hook, the variant
+;; `with-editor-setup-environment' instead sets such an environment
+;; variable directly in `process-environment', before the process
+;; is spawned:
+;;
+;;   (add-hook 'ghostel-pre-spawn-hook #'with-editor-setup-environment)
+
 ;; This library can also be used by other packages which need to use
 ;; the current Emacs instance as editor.  In fact this library was
 ;; written for Magit and its `git-commit-mode' and `git-rebase-mode'.
@@ -485,6 +492,12 @@ or \\[with-editor-cancel] to cancel")
 
 (defvar with-editor--envvar nil "For internal use.")
 
+(defvar-local with-editor--pending-sleeping-editor nil
+  "Environment variable exported by `with-editor-setup-environment'.
+Non-nil when that function exported the sleeping editor in this
+buffer and the next `make-process' call still has to be given a
+process filter that handles the sleeping editor's edit requests.")
+
 (defmacro with-editor (&rest body)
   "Use the Emacsclient as $EDITOR while evaluating BODY.
 Modify the `process-environment' for processes started in BODY,
@@ -608,21 +621,27 @@ the appropriate editor environment variable."
         connection-type filter sentinel stderr file-handler
         &allow-other-keys)
   "When called inside a `with-editor' form and the Emacsclient
-cannot be used, then give the process the filter function
-`with-editor-process-filter'.  To avoid overriding the filter
-being added here you should use `with-editor-set-process-filter'
-instead of `set-process-filter' inside `with-editor' forms.
+cannot be used, or when `with-editor-setup-environment' exported
+the sleeping editor in the current buffer, give the process the
+filter function `with-editor-process-filter'.  To avoid overriding
+the filter being added here you should use
+`with-editor-set-process-filter' instead of `set-process-filter'
+inside `with-editor' forms.
 
 When the `default-directory' is located on a remote machine and
 FILE-HANDLER is non-nil, then also manipulate COMMAND in order
 to set the appropriate editor environment variable."
-  (if (or (not file-handler) (not with-editor--envvar))
+  (if (not (or (and file-handler with-editor--envvar)
+               with-editor--pending-sleeping-editor))
       (apply fn keys)
-    (when (file-remote-p default-directory)
-      (unless (equal (car command) "env")
-        (push "env" command))
-      (push (concat with-editor--envvar "=" with-editor-sleeping-editor)
-            (cdr command)))
+    (let ((envvar (or with-editor--envvar
+                      with-editor--pending-sleeping-editor)))
+      (setq with-editor--pending-sleeping-editor nil)
+      (when (and file-handler (file-remote-p default-directory))
+        (unless (equal (car command) "env")
+          (push "env" command))
+        (push (concat envvar "=" with-editor-sleeping-editor)
+              (cdr command))))
     (let* ((filter (if filter
                        (lambda (process output)
                          (funcall filter process output)
@@ -747,6 +766,34 @@ are prevented from being added to that list."
             (delete (abbreviate-file-name file) file-name-history)))))
 
 ;;; Augmentations
+
+;;;###autoload
+(cl-defun with-editor-setup-environment (&optional (envvar "EDITOR"))
+  "Mutate `process-environment' so ENVVAR points at this Emacs.
+
+ENVVAR defaults to \"EDITOR\".  Push an entry onto
+`process-environment' that makes subprocesses use the running Emacs
+as the editor, via `emacsclient', or via the sleeping editor when
+`with-editor-emacsclient-executable' is nil or `default-directory'
+is remote.
+
+In the sleeping editor case the next `make-process' call from the
+current buffer is additionally given a process filter that handles
+the sleeping editor's edit requests.  When the caller spawns the
+process by other means than `make-process', nothing handles these
+requests and invoking the editor hangs until interrupted.
+
+Unlike `with-editor-export-editor', this does not interact with a
+terminal buffer.  It is intended for pre-spawn hooks, which
+dynamically bind `process-environment' so the mutation is inherited
+only by the about-to-be-spawned subprocess:
+
+  (add-hook \\='ghostel-pre-spawn-hook #\\='with-editor-setup-environment)"
+  (let ((with-editor--envvar envvar))
+    (with-editor--setup))
+  (when (or (not with-editor-emacsclient-executable)
+            (file-remote-p default-directory))
+    (setq with-editor--pending-sleeping-editor envvar)))
 
 ;;;###autoload
 (cl-defun with-editor-export-editor
