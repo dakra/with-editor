@@ -49,6 +49,15 @@ equivalent:
   (add-hook 'shell-mode-hook 'with-editor-export-git-editor)
 #+end_src
 
+For terminal modes that offer a pre-spawn hook, the variant
+~with-editor-setup-environment~ instead sets such an environment
+variable directly in ~process-environment~, before the process
+is spawned:
+
+#+begin_src emacs-lisp
+  (add-hook 'ghostel-pre-spawn-hook #'with-editor-setup-environment)
+#+end_src
+
 This library can also be used by other packages which need to use
 the current Emacs instance as editor.  In fact this library was
 written for Magit and its ~git-commit-mode~ and ~git-rebase-mode~.
