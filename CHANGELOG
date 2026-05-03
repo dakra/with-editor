@@ -1,4 +1,10 @@
 # -*- mode: org -*-
+* v3.5.5    UNRELEASED
+
+- Added ~with-editor-setup-environment~, which injects an editor
+  env var into ~process-environment~ for use by pre-spawn hooks such
+  as ~ghostel-pre-spawn-hook~.  Also works in remote (TRAMP) buffers.
+
 * v3.5.4    2026-09-01
 
 - Thoughts and whitespace.
